@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>运营数据看板 · Dashboard</title>
+<style>
+/* ============================================================
+   1. 主题变量（CSS 变量统一管理颜色，切换 html.dark 类名即可换肤）
+   ============================================================ */
+:root {
+  --bg: #eef2f8;
+  --surface: #ffffff;
+  --surface-2: #f6f8fc;
+  --border: #e3e9f2;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --primary: #2563eb;
+  --primary-soft: rgba(37, 99, 235, 0.10);
+  --success: #16a34a;
+  --danger: #dc2626;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
+  --radius: 14px;
+  --gap: 14px;   /* 栅格间距 */
+  --pad: 14px;   /* 页面内边距 */
+  color-scheme: light;
+}
+
+/* 深色主题：只覆盖变量，布局与结构完全复用，零重复代码 */
+html.dark {
+  --bg: #0b1220;
+  --surface: #111a2c;
+  --surface-2: #17223a;
+  --border: #22304d;
+  --text: #e8eefc;
+  --text-muted: #93a4c3;
+  --primary: #60a5fa;
+  --primary-soft: rgba(96, 165, 250, .16);
+  --success: #4ade80;
+  --danger: #f87171;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 10px 28px rgba(0, 0, 0, .38);
+  color-scheme: dark;
+}
+
+/* ============================================================
+   2. 基础重置 —— 统一 box-sizing，杜绝横向滚动
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;   /* 关键：所有元素尺寸都含 padding/border */
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  /* 关键：兜底禁止横向滚动；现代浏览器用 clip，不产生滚动容器，不会破坏 sticky */
+  overflow-x: hidden;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+  transition: background-color .25s ease, color .25s ease;
+}
+
+h1, h2, h3, p { margin: 0; }
+svg { display: block; }
+
+/* ============================================================
+   3. 顶部栏
+   ============================================================ */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;                 /* 窄屏自动换行，不撑破 */
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--pad);
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+  transition: background-color .25s ease, border-color .25s ease;
+}
+
+.topbar__titles { min-width: 0; }  /* 允许文字被压缩，防止溢出 */
+
+.topbar__title {
+  font-size: clamp(1.1rem, 2.4vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.topbar__subtitle {
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 按钮（主题切换 / 刷新） ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 8px 14px;
+  color: var(--text);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color .2s, border-color .2s, background-color .2s, transform .1s;
+}
+.btn:hover { color: var(--primary); border-color: var(--primary); }
+.btn:active { transform: scale(.97); }
+.btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.btn--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+/* 主题图标：浅色显示月亮，深色显示太阳 */
+#themeToggle .icon-sun { display: none; }
+html.dark #themeToggle .icon-sun { display: block; }
+html.dark #themeToggle .icon-moon { display: none; }
+
+/* ============================================================
+   4. 整体布局：手机单列 → 桌面「侧边栏 + 主内容」双列
+   ============================================================ */
+.layout {
+  width: 100%;
+  max-width: 1920px;          /* 只限制上限，不写死宽度 */
+  margin: 0 auto;
+  padding: var(--pad);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);  /* 小屏：单列 */
+  gap: var(--gap);
+  align-items: start;
+}
+
+.main { min-width: 0; }        /* 关键：防止 grid 子项被内容撑破 */
+
+.main__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.main__updated {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;   /* 时间数字也等宽，不抖动 */
+}
+
+/* ---------- 侧边栏（宽屏才显示，且 sticky 固定） ---------- */
+.sidebar {
+  display: none;                        /* 手机 / 平板隐藏 */
+  padding: 16px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: background-color .25s ease, border-color .25s ease;
+}
+
+.sidebar__title {
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar__link {
+  display: block;
+  padding: 9px 12px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 9px;
+  transition: background-color .2s, color .2s;
+}
+.sidebar__link:hover { background-color: var(--surface-2); color: var(--text); }
+.sidebar__link--active {
+  background-color: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ============================================================
+   5. 卡片栅格
+   使用 auto-fit + minmax()，绝不写死固定宽度
+   ============================================================ */
+.cards {
+  display: grid;
+  gap: var(--gap);
+  /* 手机：min(100%, 260px) 保证容器再窄也能塞进一列，绝不溢出 */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+
+/* ---------- 单个卡片 ---------- */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;                 /* 关键：grid 子项默认 min-width:auto 会溢出 */
+  padding: var(--pad);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: transform .2s ease, box-shadow .2s ease,
+              background-color .25s ease, border-color .25s ease;
+}
+.card:hover { transform: translateY(-2px); }
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* 图标容器：显式尺寸 + currentColor 继承父级文字颜色 */
+.card__icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background-color: var(--primary-soft);
+  color: var(--primary);        /* 图标 stroke="currentColor" 自动继承 */
+}
+.card__icon svg { width: 20px; height: 20px; }
+
+.card__title {
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;      /* 超长文本也不会撑破卡片 */
+}
+
+/* 数值：tabular-nums 让 0-9 等宽，刷新时宽度不变 → 不抖动 */
+.card__value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  font-size: clamp(1.375rem, 4vw, 1.875rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.card__num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.card__unit {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* 趋势行：margin-top:auto 让不同高度的卡片底部对齐 */
+.card__trend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.card__trend.is-up { color: var(--success); }
+.card__trend.is-down { color: var(--danger); }
+
+.card__trend-note {
+  margin-left: 2px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   6. 断点
+   ============================================================ */
+
+/* —— 平板：768px – 1199px，两列 —— */
+@media (min-width: 768px) {
+  :root { --gap: 18px; --pad: 20px; }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* —— 桌面：≥ 1200px，四列 + 固定侧边栏 —— */
+@media (min-width: 1200px) {
+  :root { --gap: 20px; --pad: 24px; }
+
+  .layout {
+    /* 侧边栏用 minmax 限定区间，主内容用 minmax(0,1fr) 自适应剩余空间 */
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .sidebar {
+    display: block;
+    position: sticky;                          /* 宽屏下固定 */
+    top: var(--pad);
+    max-height: calc(100vh - var(--pad) * 2);
+    overflow-y: auto;
+  }
+
+  .cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* 尊重系统「减少动效」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+</style>
+</head>
+<body>
+
+  <!-- ========== 顶部栏：h1 主标题 + 语义化 button ========== -->
+  <header class="topbar">
+    <div class="topbar__titles">
+      <h1 class="topbar__title">运营数据看板</h1>
+      <p class="topbar__subtitle">实时监控 · 今日概览</p>
+    </div>
+
+    <div class="topbar__actions">
+      <button type="button" class="btn" id="refreshBtn">刷新数据</button>
+
+      <button type="button" class="btn btn--icon" id="themeToggle"
+              aria-label="切换深色模式" aria-pressed="false">
+        <!-- 月亮：浅色模式下显示 -->
+        <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
+        </svg>
+        <!-- 太阳：深色模式下显示 -->
+        <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41
+                   M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ========== 侧边栏（≥1200px 显示并 sticky 固定） ========== -->
+    <aside class="sidebar" aria-label="侧边导航">
+      <h2 class="sidebar__title">导航</h2>
+      <nav class="sidebar__nav">
+        <a class="sidebar__link sidebar__link--active" href="#">概览</a>
+        <a class="sidebar__link" href="#">流量分析</a>
+        <a class="sidebar__link" href="#">订单管理</a>
+        <a class="sidebar__link" href="#">用户中心</a>
+        <a class="sidebar__link" href="#">系统设置</a>
+      </nav>
+    </aside>
+
+    <!-- ========== 主内容区 ========== -->
+    <main class="main">
+      <div class="main__head">
+        <h2 class="section-title">核心指标</h2>
+        <span class="main__updated" id="updatedAt"></span>
+      </div>
+
+      <!-- 卡片由 JS 数组遍历渲染，此处保持空容器 -->
+      <div class="cards" id="cards"></div>
+    </main>
+
+  </div>
+
+<script>
+/* ============================================================
+   A. 内联 SVG 图标库
+   —— 全部使用 stroke="currentColor" / fill="currentColor"，
+      颜色自动继承父级 color，方便随主题变化
+   ============================================================ */
+const ICONS = {
+  eye: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>`,
+
+  cart: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9.5" cy="20" r="1.4"/>
+          <circle cx="18" cy="20" r="1.4"/>
+          <path d="M2.5 3h2.3l2.4 12.2h11.2l2.1-8.7H6.3"/>
+        </svg>`,
+
+  user: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 21v-1.8a4.2 4.2 0 0 0-4.2-4.2H8.2A4.2 4.2 0 0 0 4 19.2V21"/>
+          <circle cx="12" cy="7.5" r="3.8"/>
+        </svg>`,
+
+  wallet: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/>
+          <path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/>
+          <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
+        </svg>`,
+
+  clock: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3.5 2"/>
+        </svg>`,
+
+  cpu: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="5" width="14" height="14" rx="2"/>
+          <rect x="10" y="10" width="4" height="4" rx="1"/>
+          <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>
+        </svg>`,
+
+  arrowUp: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
+        </svg>`,
+
+  arrowDown: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+        </svg>`
+};
+
+/* ============================================================
+   B. 数据源：6 条指标数据（唯一数据来源，HTML 中不写重复结构）
+   ============================================================ */
+const metrics = [
+  { id: 'visits', title: '今日访问量',   value: 128430,  unit: '次', trend: 12.6, up: true,  icon: 'eye'    },
+  { id: 'orders', title: '订单总数',     value: 8642,    unit: '单', trend: 8.3,  up: true,  icon: 'cart'   },
+  { id: 'users',  title: '新增用户',     value: 3127,    unit: '人', trend: 3.1,  up: false, icon: 'user'   },
+  { id: 'sales',  title: '销售额',       value: 1284650, unit: '元', trend: 18.9, up: true,  icon: 'wallet' },
+  { id: 'rt',     title: '平均响应时间', value: 186,     unit: 'ms', trend: 5.4,  up: false, icon: 'clock'  },
+  { id: 'load',   title: '服务器负载',   value: 62,      unit: '%',  trend: 1.8,  up: true,  icon: 'cpu'    }
+];
+
+/* ============================================================
+   C. 渲染逻辑
+   ============================================================ */
+const cardsEl   = document.getElementById('cards');
+const updatedEl = document.getElementById('updatedAt');
+
+/** 数字千分位格式化 */
+const formatNumber = (n) => Number(n).toLocaleString('en-US');
+
+/** 单张卡片模板（<section> 语义化标签） */
+function cardTemplate(item) {
+  const trendClass = item.up ? 'is-up' : 'is-down';
+  const trendIcon  = item.up ? ICONS.arrowUp : ICONS.arrowDown;
+  const sign       = item.up ? '+' : '−';
+
+  return `
+    <section class="card" aria-labelledby="card-title-${item.id}">
+      <header class="card__head">
+        <span class="card__icon">${ICONS[item.icon]}</span>
+        <h3 class="card__title" id="card-title-${item.id}">${item.title}</h3>
+      </header>
+
+      <p class="card__value">
+        <span class="card__num">${formatNumber(item.value)}</span>
+        <span class="card__unit">${item.unit}</span>
+      </p>
+
+      <p class="card__trend ${trendClass}">
+        ${trendIcon}
+        <span>${sign}${item.trend.toFixed(1)}%</span>
+        <span class="card__trend-note">较昨日</span>
+      </p>
+    </section>
+  `;
+}
+
+/** 用 map 遍历数组 → 拼接 HTML → 一次性写入，避免手写 6 段重复结构 */
+function renderCards(list) {
+  cardsEl.innerHTML = list.map(cardTemplate).join('');
+}
+
+/** 更新时间戳 */
+function updateTimestamp() {
+  const now = new Date();
+  const pad = (v) => String(v).padStart(2, '0');
+  updatedEl.textContent =
+    `最后更新 ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
+/* ============================================================
+   D. 主题切换（切换 html 上的 dark 类名 + 本地持久化）
+   ============================================================ */
+const themeToggle = document.getElementById('themeToggle');
+const STORAGE_KEY = 'dashboard-theme';
+
+function setTheme(isDark, persist = true) {
+  // 只切换类名，所有颜色由 CSS 变量决定
+  document.documentElement.classList.toggle('dark', isDark);
+  themeToggle.setAttribute('aria-pressed', String(isDark));
+  themeToggle.setAttribute('aria-label', isDark ? '切换到浅色模式' : '切换到深色模式');
+
+  if (persist) {
+    try { localStorage.setItem(STORAGE_KEY, isDark ? 'dark' : 'light'); } catch (e) {}
+  }
+}
+
+themeToggle.addEventListener('click', () => {
+  const isDark = document.documentElement.classList.contains('dark');
+  setTheme(!isDark);
+});
+
+/* 初始化主题：优先读取本地存储，否则跟随系统偏好 */
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+
+  const prefersDark =
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  setTheme(saved ? saved === 'dark' : prefersDark, false);
+})();
+
+/* ============================================================
+   E. 刷新数据（用于演示 tabular-nums 数字不抖动效果）
+   ============================================================ */
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  metrics.forEach((m) => {
+    // 在原值基础上 ±15% 随机浮动，制造数字变化
+    m.value  = Math.max(1, Math.round(m.value * (0.85 + Math.random() * 0.3)));
+    m.trend  = Math.round(Math.random() * 250) / 10;  // 0.0 ~ 25.0
+    m.up     = Math.random() > 0.35;
+  });
+
+  renderCards(metrics);
+  updateTimestamp();
+});
+
+/* ============================================================
+   F. 首次渲染
+   ============================================================ */
+renderCards(metrics);
+updateTimestamp();
+</script>
+</body>
+</html>
